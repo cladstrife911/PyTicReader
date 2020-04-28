@@ -3,6 +3,10 @@
 import getpass 
 import paho.mqtt.client as mqttClient
 import time
+import matplotlib.pyplot as plt
+import matplotlib.animation as anim
+import matplotlib.style as style
+import numpy as np
 
 Connected = False #global variable for the state of the connection
  
@@ -10,6 +14,13 @@ broker_address= "192.168.1.2"
 port = 1883
 user = "emonpi"
 password = ""
+
+style.use('fast')
+
+fig = plt.figure()
+ax1 = fig.add_subplot(1,1,1)
+xs = []
+ys = []
 
 ####################
 def on_connect(client, userdata, flags, rc):
@@ -23,6 +34,10 @@ def on_connect(client, userdata, flags, rc):
 ####################
 def on_message(client, userdata, msg):
     print("Message received from " + msg.topic + ":" + str(msg.payload))
+    if msg.topic == "AntoineHome/TIC/IINST":
+        ys.append(int(msg.payload))
+        if len(ys) > 100:
+            ys.remove(ys[0])
 
 ####################
 # request a password to use for MQTT connection
@@ -32,6 +47,15 @@ def login():
         user = _user
     #else use default user name
     password = getpass.getpass()
+
+def init_graph():
+    ax1.set_ylabel('IINST')
+    ax1.set_xlim(0, 20)
+    ax1.set_ylim(0, 20)
+
+def update_graph(i):
+    ax1.clear()
+    ax1.plot(ys)
 
 ####################
 def main():
@@ -48,7 +72,12 @@ def main():
     while Connected != True:    #Wait for connection
         time.sleep(0.1)
  
+    #client.subscribe("AntoineHome/TIC/IINST")
     client.subscribe("AntoineHome/TIC/#")
+
+    init_graph()
+    ani = anim.FuncAnimation(fig, update_graph, interval=1000, repeat=True)
+    plt.show()
 
     try:
         while True:
