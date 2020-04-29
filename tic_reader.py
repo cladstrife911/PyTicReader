@@ -15,6 +15,7 @@ import logging
 import argparse
  
 # MQTT related variables
+MqttClient = ""
 broker_address= "192.168.1.2"
 port = 1883
 user = "emonpi"
@@ -22,6 +23,7 @@ password = ""
 Connected = False #global variable for the state of the connection
 
 # Log related
+MAX_LOG_SIZE = 1000000
 csv_columns = ['datetime','HCHC','HCHP','PTEC','IINST','PAPP']
 csv_file = ""
 file_idx=0
@@ -42,15 +44,24 @@ ys = []
 allow_graph=0
 
 ####################
+# callback from mqtt client
 def on_connect(client, userdata, flags, rc):
+    global Connected
     if rc == 0:
         logging.info("Connected to broker")
-        global Connected                #Use global variable
         Connected = True                #Signal connection 
+        #client.subscribe("AntoineHome/TIC/IINST")
+        client.subscribe("AntoineHome/TIC/#")
     else:
         logging.info("Connection failed")
 
+def on_disconnect(client, userdata, flags, rc):
+    global Connected
+    logging.info("Connection to broker lost")
+    Connected = False
+
 ####################
+# callback from mqtt client
 def on_message(client, userdata, msg):
     logging.info("Message received from " + msg.topic + ":" + str(msg.payload))
     if msg.topic == "AntoineHome/TIC/HCHC":
@@ -70,11 +81,12 @@ def on_message(client, userdata, msg):
         save_to_csv()
 
 ####################
+# save received data in a csv file
 def save_to_csv():
     global file_idx
     size = os.stat(csv_file).st_size
     #print("log size="+ str(size))
-    if size > 10000:
+    if size > MAX_LOG_SIZE:
         file_idx+=1
         configure_csv(file_idx)
     now = datetime.now()
@@ -88,6 +100,7 @@ def save_to_csv():
         logging.error("I/O error")
 
 ####################
+# create csv file and write header
 def configure_csv(idx):
     global csv_file
     now = datetime.now()
@@ -110,18 +123,25 @@ def login():
     password = getpass.getpass()
 
 ####################
+# initialize matplot graph
 def init_graph():
-    ax1.set_ylabel('IINST')
-    #ax1.set_xlim(0, 20)
-    #ax1.set_ylim(0, 20)
+    #don't use matplot graph if the script is running on the raspberry pi
+    if platform.uname()[1] != "raspberrypi" and allow_graph==1:
+        ani = anim.FuncAnimation(fig, update_graph, interval=1000, repeat=True)
+        plt.show()
+        ax1.set_ylabel('IINST')
+        #ax1.set_xlim(0, 20)
+        #ax1.set_ylim(0, 20)
 
 ####################
+# add data to graph and redraw
 def update_graph(i):
     if platform.uname()[1] != "raspberrypi" and allow_graph==1:
         ax1.clear()
         ax1.plot(ys)
 
 ####################
+# handle arguments passed to the script
 def handle_main_arg():
     global allow_graph
     parser = argparse.ArgumentParser()
@@ -137,43 +157,47 @@ def handle_main_arg():
     else:
         allow_graph = 0
 
+####################
+# configure MQTT client and open connection
+def init_mqtt():
+    global MqttClient
+    MqttClient = mqttClient.Client("Python")               #create new instance
+    MqttClient.username_pw_set(user, password=password)    #set username and password
+    MqttClient.on_connect= on_connect                      #attach function to callback
+    MqttClient.on_message= on_message                      #attach function to callback
+    MqttClient.on_socket_close= on_disconnect
 
+    MqttClient.reconnect_delay_set(min_delay=10)
+
+    try:
+        MqttClient.connect(broker_address, port=port)  #connect to broker
+        MqttClient.loop_start()                        #start the loop
+ 
+        while Connected != True:    #Wait for connection
+            time.sleep(0.1)
+        return True
+
+    except ConnectionRefusedError:
+        logging.info("Was not able to connect to MQTT broker")
+        return False
 
 ####################
 def main():
+    global Connected
+    global MqttClient
     #login()
-
-    client = mqttClient.Client("Python")               #create new instance
-    client.username_pw_set(user, password=password)    #set username and password
-    client.on_connect= on_connect                      #attach function to callback
-    client.on_message= on_message                      #attach function to callback
-
-    client.connect(broker_address, port=port)  #connect to broker
-    client.loop_start()                        #start the loop
- 
-    while Connected != True:    #Wait for connection
-        time.sleep(0.1)
- 
     configure_csv(file_idx)
-
-    #client.subscribe("AntoineHome/TIC/IINST")
-    client.subscribe("AntoineHome/TIC/#")
-
-    #don't use matplot graph if the script is running on the raspberry pi
-    if platform.uname()[1] != "raspberrypi" and allow_graph==1:
-        init_graph()
-        ani = anim.FuncAnimation(fig, update_graph, interval=1000, repeat=True)
-        plt.show()
-
+    while init_mqtt() == False:
+        logging.info("init_mqtt fail")
+    init_graph()
     try:
         while True:
             time.sleep(1)
- 
+                
     except KeyboardInterrupt:
         logging.info("exiting")
-        client.disconnect()
-        client.loop_stop()
-
+        MqttClient.disconnect()
+        MqttClient.loop_stop()
 
 ####################
 if __name__ == "__main__":
