@@ -1,0 +1,2 @@
+- tic_reader.service: this file shall be used to start the python script as a service
+- tic_reader.py: python script that do the job

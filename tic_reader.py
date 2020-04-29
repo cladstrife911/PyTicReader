@@ -84,6 +84,7 @@ def on_message(client, userdata, msg):
 # save received data in a csv file
 def save_to_csv():
     global file_idx
+    logging.info("Current folder:"+os.getcwd())
     size = os.stat(csv_file).st_size
     #print("log size="+ str(size))
     if size > MAX_LOG_SIZE:
@@ -161,7 +162,8 @@ def handle_main_arg():
 # configure MQTT client and open connection
 def init_mqtt():
     global MqttClient
-    MqttClient = mqttClient.Client("Python")               #create new instance
+    #user platform name as client so multiple device can run the same script
+    MqttClient = mqttClient.Client(platform.uname()[1])               #create new instance
     MqttClient.username_pw_set(user, password=password)    #set username and password
     MqttClient.on_connect= on_connect                      #attach function to callback
     MqttClient.on_message= on_message                      #attach function to callback
