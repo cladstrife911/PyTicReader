@@ -95,7 +95,7 @@ def save_to_csv():
     #print("csv_file="+ csv_file)
     try:
         with open(csv_file, 'a') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=csv_columns, delimiter=',', lineterminator='\r')
+            writer = csv.DictWriter(csvfile, fieldnames=csv_columns, delimiter=',', lineterminator='\n')
             writer.writerow(dict_data)
     except IOError:
         logging.error("I/O error")

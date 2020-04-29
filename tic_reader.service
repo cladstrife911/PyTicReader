@@ -1,9 +1,3 @@
-# Need to copy this file in /lib/systemd/system/tic_reader.service
-# -> sudo systemctl enable tic_reader.service
-# -> sudo systemctl status tic_reader.service
-# -> sudo systemctl start tic_reader.service
-# -> sudo systemctl stop tic_reader.service
-
 [Unit]
 Description=Tic Reader service
 After=multi-user.target
@@ -11,6 +5,7 @@ After=multi-user.target
 
 [Service]
 Type=simple
+WorkingDirectory=/home/pi/git_repo/PyTicReader
 ExecStart=/usr/bin/python /home/pi/git_repo/PyTicReader/tic_reader.py
 #StandardInput=tty-force
 
