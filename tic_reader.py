@@ -11,6 +11,8 @@ import csv
 from datetime import datetime
 import os
 import platform
+import logging
+import argparse
  
 # MQTT related variables
 broker_address= "192.168.1.2"
@@ -37,19 +39,20 @@ style.use('fast')
 fig = plt.figure()
 ax1 = fig.add_subplot(1,1,1)
 ys = []
+allow_graph=0
 
 ####################
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        print("Connected to broker")
+        logging.info("Connected to broker")
         global Connected                #Use global variable
         Connected = True                #Signal connection 
     else:
-        print("Connection failed")
+        logging.info("Connection failed")
 
 ####################
 def on_message(client, userdata, msg):
-    print("Message received from " + msg.topic + ":" + str(msg.payload))
+    logging.info("Message received from " + msg.topic + ":" + str(msg.payload))
     if msg.topic == "AntoineHome/TIC/HCHC":
         dict_data["HCHC"]=int(msg.payload)
     elif msg.topic == "AntoineHome/TIC/HCHP":
@@ -82,20 +85,20 @@ def save_to_csv():
             writer = csv.DictWriter(csvfile, fieldnames=csv_columns, delimiter=',', lineterminator='\r')
             writer.writerow(dict_data)
     except IOError:
-        print("I/O error")
+        logging.error("I/O error")
 
 ####################
 def configure_csv(idx):
     global csv_file
     now = datetime.now()
     csv_file = "TIC_log_"+now.strftime("%Y%m%d")+"_"+str(idx)+".csv"
-    print("#configure_csv: "+csv_file)
+    logging.info("#configure_csv: "+csv_file)
     try:
        with open(csv_file, 'w') as csvfile: 
             writer = csv.DictWriter(csvfile, fieldnames=csv_columns, delimiter=',', lineterminator='\r')
             writer.writeheader()
     except IOError:
-        print("I/O error")
+        logging.error("I/O error")
 
 ####################
 # request a password to use for MQTT connection
@@ -106,15 +109,35 @@ def login():
     #else use default user name
     password = getpass.getpass()
 
+####################
 def init_graph():
     ax1.set_ylabel('IINST')
     #ax1.set_xlim(0, 20)
     #ax1.set_ylim(0, 20)
 
+####################
 def update_graph(i):
-    if platform.uname()[1] != "raspberrypi":
+    if platform.uname()[1] != "raspberrypi" and allow_graph==1:
         ax1.clear()
         ax1.plot(ys)
+
+####################
+def handle_main_arg():
+    global allow_graph
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-v","--verbose", help="enable verbosity mode ", action="store_true")
+    parser.add_argument("-g","--graphic", help="trace IINST in graphic view", action="store_true")
+    args = parser.parse_args()
+    if args.verbose:
+        logging.basicConfig(level=logging.INFO)
+    else:
+        logging.basicConfig(level=logging.CRITICAL)
+    if args.graphic:
+        allow_graph=1
+    else:
+        allow_graph = 0
+
+
 
 ####################
 def main():
@@ -137,7 +160,7 @@ def main():
     client.subscribe("AntoineHome/TIC/#")
 
     #don't use matplot graph if the script is running on the raspberry pi
-    if platform.uname()[1] != "raspberrypi":
+    if platform.uname()[1] != "raspberrypi" and allow_graph==1:
         init_graph()
         ani = anim.FuncAnimation(fig, update_graph, interval=1000, repeat=True)
         plt.show()
@@ -147,11 +170,12 @@ def main():
             time.sleep(1)
  
     except KeyboardInterrupt:
-        print("exiting")
+        logging.info("exiting")
         client.disconnect()
         client.loop_stop()
 
 
 ####################
 if __name__ == "__main__":
+    handle_main_arg()
     main()
