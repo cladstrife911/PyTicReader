@@ -21,10 +21,11 @@ port = 1883
 user = "emonpi"
 password = ""
 Connected = False #global variable for the state of the connection
+ErrorCounter = 0
 
 # Log related
 MAX_LOG_SIZE = 1000000
-csv_columns = ['datetime','HCHC','HCHP','PTEC','IINST','PAPP']
+csv_columns = ['datetime','HCHC','HCHP','PTEC','IINST','PAPP','ErrorCounter']
 csv_file = ""
 file_idx=0
 dict_data={
@@ -32,8 +33,9 @@ dict_data={
     "HCHC": 0,
     "HCHP": 0,
     "PTEC": 0,
-    "IINST":0,
-    "PAPP":0
+    "IINST": 0,
+    "PAPP": 0,
+    "ErrorCounter": 0
 }
 
 # Graph related variables
@@ -78,32 +80,42 @@ def on_message(client, userdata, msg):
     elif msg.topic == "AntoineHome/TIC/PAPP":
         dict_data["PAPP"]=int(msg.payload)
         #save to csv file only when last topic is received
+        # PAPP is the last topic refreshed by the publisher
         save_to_csv()
 
 ####################
 # save received data in a csv file
 def save_to_csv():
+    global ErrorCounter
     global file_idx
-    logging.info("Current folder:"+os.getcwd())
-    size = os.stat(csv_file).st_size
-    #print("log size="+ str(size))
-    if size > MAX_LOG_SIZE:
-        file_idx+=1
-        configure_csv(file_idx)
-    now = datetime.now()
-    dict_data["datetime"]=now.strftime("%Y/%m/%d %H:%M:%S")
-    #print("csv_file="+ csv_file)
-    try:
-        with open(csv_file, 'a') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=csv_columns, delimiter=',', lineterminator='\n')
-            writer.writerow(dict_data)
-    except IOError:
-        logging.error("I/O error")
+    # don't save in csv file if data is 0 
+    # probably due do TIC info not valid
+    if dict_data["HCHC"] != 0 and dict_data["PAPP"] != 0:
+        size = os.stat(csv_file).st_size
+        #print("log size="+ str(size))
+        if size > MAX_LOG_SIZE:
+            file_idx+=1
+            configure_csv(file_idx)
+        now = datetime.now()
+        dict_data["datetime"]=now.strftime("%Y/%m/%d %H:%M:%S")
+        #print("csv_file="+ csv_file)
+        try:
+            with open(csv_file, 'a') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=csv_columns, delimiter=',', lineterminator='\n')
+                writer.writerow(dict_data)
+        except IOError:
+            logging.error("I/O error")
+    else:
+        ErrorCounter += 1
+        dict_data["ErrorCounter"] = ErrorCounter
+        logging.error("Data to save are not valid")
+
 
 ####################
 # create csv file and write header
 def configure_csv(idx):
     global csv_file
+    logging.info("Current folder:"+os.getcwd())
     now = datetime.now()
     csv_file = "TIC_log_"+now.strftime("%Y%m%d")+"_"+str(idx)+".csv"
     logging.info("#configure_csv: "+csv_file)
