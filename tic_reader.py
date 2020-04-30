@@ -15,21 +15,22 @@ import logging
 import argparse
  
 # MQTT related variables
-MqttClient = ""
-broker_address= "192.168.1.2"
-port = 1883
-user = "emonpi"
-password = ""
-Connected = False #global variable for the state of the connection
-ErrorCounter = 0
+gMqttClient = ""
+gMqttBrokerAddr= "192.168.1.2"
+gMqttBrokerPort = 1883
+gMqttUser = "emonpi"
+gMqttPswd = ""
+gMqttConnected = False #global variable for the state of the connection
+gMqttErrorCounter = 0
 
 # Log related
 MAX_LOG_SIZE = 1000000
-csv_columns = ['datetime','HCHC','HCHP','PTEC','IINST','PAPP','ErrorCounter']
-csv_file = ""
-file_idx=0
-dict_data={
-    "datetime":"",
+gLogCsvColumns = ['date','time','HCHC','HCHP','PTEC','IINST','PAPP','ErrorCounter']
+gLogCsvFile = ""
+gLogCsvFileIdx=0
+gLogCsvDictData={
+    "date":"",
+    "time":"",
     "HCHC": 0,
     "HCHP": 0,
     "PTEC": 0,
@@ -37,6 +38,7 @@ dict_data={
     "PAPP": 0,
     "ErrorCounter": 0
 }
+gLogDay=""
 
 # Graph related variables
 style.use('fast')
@@ -48,37 +50,37 @@ allow_graph=0
 ####################
 # callback from mqtt client
 def on_connect(client, userdata, flags, rc):
-    global Connected
+    global gMqttConnected
     if rc == 0:
         logging.info("Connected to broker")
-        Connected = True                #Signal connection 
+        gMqttConnected = True                #Signal connection 
         #client.subscribe("AntoineHome/TIC/IINST")
         client.subscribe("AntoineHome/TIC/#")
     else:
         logging.info("Connection failed")
 
 def on_disconnect(client, userdata, flags, rc):
-    global Connected
+    global gMqttConnected
     logging.info("Connection to broker lost")
-    Connected = False
+    gMqttConnected = False
 
 ####################
 # callback from mqtt client
 def on_message(client, userdata, msg):
     logging.info("Message received from " + msg.topic + ":" + str(msg.payload))
     if msg.topic == "AntoineHome/TIC/HCHC":
-        dict_data["HCHC"]=int(msg.payload)
+        gLogCsvDictData["HCHC"]=int(msg.payload)
     elif msg.topic == "AntoineHome/TIC/HCHP":
-        dict_data["HCHP"]=int(msg.payload)
+        gLogCsvDictData["HCHP"]=int(msg.payload)
     elif msg.topic == "AntoineHome/TIC/PTEC":
-        dict_data["PTEC"]=int(msg.payload)
+        gLogCsvDictData["PTEC"]=int(msg.payload)
     elif msg.topic == "AntoineHome/TIC/IINST":
-        dict_data["IINST"]=int(msg.payload)
+        gLogCsvDictData["IINST"]=int(msg.payload)
         ys.append(int(msg.payload))
         if len(ys) > 100:
             ys.remove(ys[0])
     elif msg.topic == "AntoineHome/TIC/PAPP":
-        dict_data["PAPP"]=int(msg.payload)
+        gLogCsvDictData["PAPP"]=int(msg.payload)
         #save to csv file only when last topic is received
         # PAPP is the last topic refreshed by the publisher
         save_to_csv()
@@ -86,42 +88,54 @@ def on_message(client, userdata, msg):
 ####################
 # save received data in a csv file
 def save_to_csv():
-    global ErrorCounter
-    global file_idx
-    # don't save in csv file if data is 0 
-    # probably due do TIC info not valid
-    if dict_data["HCHC"] != 0 and dict_data["PAPP"] != 0:
-        size = os.stat(csv_file).st_size
+    global gMqttErrorCounter
+    global gLogCsvFileIdx
+    global gLogDay
+
+    #after midnight create a new log file
+    now = datetime.now()
+    current_day = now.strftime("%d")
+    if current_day != gLogDay:
+        #reset file idx and create new log file
+        gLogCsvFileIdx = 0
+        configure_csv(gLogCsvFileIdx)
+
+    # don't save in csv file if data is 0 (probably due do TIC info not valid)
+    if gLogCsvDictData["HCHC"] != 0 and gLogCsvDictData["PAPP"] != 0:
+        size = os.stat(gLogCsvFile).st_size
         #print("log size="+ str(size))
         if size > MAX_LOG_SIZE:
-            file_idx+=1
-            configure_csv(file_idx)
-        now = datetime.now()
-        dict_data["datetime"]=now.strftime("%Y/%m/%d %H:%M:%S")
+            gLogCsvFileIdx+=1
+            configure_csv(gLogCsvFileIdx)
+        
+        gLogCsvDictData["date"]=now.strftime("%Y/%m/%d")
+        gLogCsvDictData["time"]=now.strftime("%H:%M:%S")
         #print("csv_file="+ csv_file)
         try:
-            with open(csv_file, 'a') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=csv_columns, delimiter=',', lineterminator='\n')
-                writer.writerow(dict_data)
+            with open(gLogCsvFile, 'a') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=gLogCsvColumns, delimiter=',', lineterminator='\n')
+                writer.writerow(gLogCsvDictData)
         except IOError:
             logging.error("I/O error")
     else:
-        ErrorCounter += 1
-        dict_data["ErrorCounter"] = ErrorCounter
+        gMqttErrorCounter += 1
+        gLogCsvDictData["ErrorCounter"] = gMqttErrorCounter
         logging.error("Data to save are not valid")
 
 
 ####################
 # create csv file and write header
 def configure_csv(idx):
-    global csv_file
+    global gLogCsvFile
+    global gLogDay
     logging.info("Current folder:"+os.getcwd())
     now = datetime.now()
-    csv_file = "TIC_log_"+now.strftime("%Y%m%d")+"_"+str(idx)+".csv"
-    logging.info("#configure_csv: "+csv_file)
+    gLogDay = now.strftime("%d")
+    gLogCsvFile = "TIC_log_"+now.strftime("%Y%m%d")+"_"+str(idx)+".csv"
+    logging.info("#configure_csv: "+gLogCsvFile)
     try:
-       with open(csv_file, 'w') as csvfile: 
-            writer = csv.DictWriter(csvfile, fieldnames=csv_columns, delimiter=',', lineterminator='\r')
+       with open(gLogCsvFile, 'w') as csvfile: 
+            writer = csv.DictWriter(csvfile, fieldnames=gLogCsvColumns, delimiter=',', lineterminator='\r')
             writer.writeheader()
     except IOError:
         logging.error("I/O error")
@@ -173,21 +187,21 @@ def handle_main_arg():
 ####################
 # configure MQTT client and open connection
 def init_mqtt():
-    global MqttClient
+    global gMqttClient
     #user platform name as client so multiple device can run the same script
-    MqttClient = mqttClient.Client(platform.uname()[1])               #create new instance
-    MqttClient.username_pw_set(user, password=password)    #set username and password
-    MqttClient.on_connect= on_connect                      #attach function to callback
-    MqttClient.on_message= on_message                      #attach function to callback
-    MqttClient.on_socket_close= on_disconnect
+    gMqttClient = mqttClient.Client(platform.uname()[1])               #create new instance
+    gMqttClient.username_pw_set(gMqttUser, password=gMqttPswd)    #set username and password
+    gMqttClient.on_connect= on_connect                      #attach function to callback
+    gMqttClient.on_message= on_message                      #attach function to callback
+    gMqttClient.on_socket_close= on_disconnect
 
-    MqttClient.reconnect_delay_set(min_delay=10)
+    gMqttClient.reconnect_delay_set(min_delay=10)
 
     try:
-        MqttClient.connect(broker_address, port=port)  #connect to broker
-        MqttClient.loop_start()                        #start the loop
+        gMqttClient.connect(gMqttBrokerAddr, port=gMqttBrokerPort)  #connect to broker
+        gMqttClient.loop_start()                        #start the loop
  
-        while Connected != True:    #Wait for connection
+        while gMqttConnected != True:    #Wait for connection
             time.sleep(0.1)
         return True
 
@@ -197,10 +211,10 @@ def init_mqtt():
 
 ####################
 def main():
-    global Connected
-    global MqttClient
+    global gMqttConnected
+    global gMqttClient
     #login()
-    configure_csv(file_idx)
+    configure_csv(gLogCsvFileIdx)
     while init_mqtt() == False:
         logging.info("init_mqtt fail")
     init_graph()
@@ -210,8 +224,8 @@ def main():
                 
     except KeyboardInterrupt:
         logging.info("exiting")
-        MqttClient.disconnect()
-        MqttClient.loop_stop()
+        gMqttClient.disconnect()
+        gMqttClient.loop_stop()
 
 ####################
 if __name__ == "__main__":
