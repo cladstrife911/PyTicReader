@@ -10,6 +10,7 @@ import numpy as np
 import csv
 from datetime import datetime
 import os
+from os import path
 import platform
 import logging
 import argparse
@@ -132,6 +133,10 @@ def configure_csv(idx):
     now = datetime.now()
     gLogDay = now.strftime("%d")
     gLogCsvFile = "TIC_log_"+now.strftime("%Y%m%d")+"_"+str(idx)+".csv"
+    while path.exists(gLogCsvFile):
+        idx+=1
+        gLogCsvFile = "TIC_log_"+now.strftime("%Y%m%d")+"_"+str(idx)+".csv"
+
     logging.info("#configure_csv: "+gLogCsvFile)
     try:
        with open(gLogCsvFile, 'w') as csvfile: 
